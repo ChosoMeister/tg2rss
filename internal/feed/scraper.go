@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -36,19 +37,7 @@ func (s *Scraper) Scrape(ctx context.Context, username string) (*entity.Channel,
 		URL:      fmt.Sprintf("%s://%s/s/%s", s.protocol, s.host, username),
 	}
 
-	ua := os.Getenv("USER_AGENT")
-
-	if ua != "" {
-		ua = userAgentDefault
-	}
-
-	c := colly.NewCollector(
-		colly.AllowedDomains(s.host),
-		colly.UserAgent(ua),
-		colly.StdlibContext(ctx),
-	)
-
-	c.WithTransport(httpTransport)
+	c := s.createCollector(ctx)
 
 	c.OnHTML(".tgme_channel_info_header", func(e *colly.HTMLElement) {
 		channel.Title = e.ChildText(".tgme_channel_info_header_title")
@@ -56,84 +45,10 @@ func (s *Scraper) Scrape(ctx context.Context, username string) (*entity.Channel,
 	})
 
 	c.OnHTML(".tgme_widget_message", func(e *colly.HTMLElement) {
-		var err error
-		var post = entity.Post{}
-
-		if post.ID, err = s.extractPostIDFromPath(e.Attr("data-post")); err != nil {
-			logger.Error("Could not get post ID",
-				"path", e.Attr("data-post"),
-				"error", err)
-			return
-		}
-
-		post.URL = fmt.Sprintf("%s://%s/%s/%d", s.protocol, s.host, username, post.ID)
-		post.Title = extractTitle(e)
-		post.ContentHTML, err = e.DOM.Find(".tgme_widget_message_text").Html()
-
+		post, err := s.processPost(e, username, logger)
 		if err != nil {
-			logger.Error("Could not get HTML post content",
-				"url", post.URL,
-				"error", err)
-			return
+			return // Error already logged in processPost
 		}
-
-		post.Images = extractImages(e)
-
-		if len(post.Images) > 0 {
-			post.Preview = &post.Images[0]
-		} else {
-			post.Preview = extractPreview(e)
-		}
-
-		dtText, exists := e.DOM.Find(".tgme_widget_message_date").Find("time").Attr("datetime")
-
-		if !exists {
-			logger.Error("Could not find datetime", "url", post.URL)
-			return
-		}
-
-		dt, err := time.Parse(time.RFC3339, dtText)
-
-		if err != nil {
-			logger.Error("Could not parse post datetime",
-				"url", post.URL,
-				"datetime", dtText,
-				"error", err)
-			return
-		}
-
-		post.Datetime = dt
-
-		// Display post deep link in case message content
-		// is unsupported by t.me or this scraper
-		if post.ContentHTML == "" {
-			post.Title = "Message content is unsupported"
-
-			postDeepLink := fmt.Sprintf(
-				"tg://resolve?domain=%s&post=%d",
-				username, post.ID,
-			)
-
-			unsupportedMsgHTML := os.Getenv("UNSUPPORTED_MESSAGE_HTML")
-
-			if unsupportedMsgHTML == "" {
-				unsupportedMsgHTML = fmt.Sprintf(
-					`<p>Message content is unsupported, try opening it in Telegram mobile app or at t.me using the links below.</p><br><br><a href="%s">[Open in Telegram]</a>&nbsp;&bull;&nbsp;<a href="%s">[Open at t.me]</a>`,
-					postDeepLink, post.URL,
-				)
-			} else {
-				unsupportedMsgHTML = strings.ReplaceAll(
-					unsupportedMsgHTML, "{postDeepLink}", postDeepLink,
-				)
-
-				unsupportedMsgHTML = strings.ReplaceAll(
-					unsupportedMsgHTML, "{postURL}", post.URL,
-				)
-			}
-
-			post.ContentHTML = unsupportedMsgHTML
-		}
-
 		channel.Posts = append(channel.Posts, post)
 	})
 
@@ -151,7 +66,137 @@ func (s *Scraper) Scrape(ctx context.Context, username string) (*entity.Channel,
 	return channel, nil
 }
 
-// extractIDFromPath extracts the numeric ID from a string in the format "prefix/id".
+// createCollector creates and configures a colly collector
+func (s *Scraper) createCollector(ctx context.Context) *colly.Collector {
+	ua := os.Getenv("USER_AGENT")
+	if ua == "" {
+		ua = userAgentDefault
+	}
+
+	c := colly.NewCollector(
+		colly.AllowedDomains(s.host),
+		colly.UserAgent(ua),
+		colly.StdlibContext(ctx),
+	)
+
+	c.WithTransport(httpTransport)
+
+	return c
+}
+
+// processPost processes a single post element and returns the post data
+func (s *Scraper) processPost(e *colly.HTMLElement, username string, logger *slog.Logger) (entity.Post, error) {
+	var post entity.Post
+	var err error
+
+	if post.ID, err = s.extractPostIDFromPath(e.Attr("data-post")); err != nil {
+		logger.Error("Could not get post ID",
+			"path", e.Attr("data-post"),
+			"error", err)
+		return post, err
+	}
+
+	post.URL = fmt.Sprintf("%s://%s/%s/%d", s.protocol, s.host, username, post.ID)
+	post.Title = extractTitle(e)
+
+	if err = s.extractPostContent(e, &post, logger); err != nil {
+		return post, err
+	}
+
+	post.Images = extractImages(e)
+	s.setPostPreview(&post, e)
+
+	if err = s.extractPostDatetime(e, &post, logger); err != nil {
+		return post, err
+	}
+
+	s.handleUnsupportedContent(&post, username)
+
+	return post, nil
+}
+
+// extractPostContent extracts HTML content from the post
+func (s *Scraper) extractPostContent(e *colly.HTMLElement, post *entity.Post, logger *slog.Logger) error {
+	msgContainer := findMessageContainer(e)
+
+	if msgContainer != nil {
+		html, err := msgContainer.Html()
+
+		if err != nil {
+			logger.Error("Could not get HTML post content",
+				"url", post.URL,
+				"error", err)
+			return err
+		}
+
+		post.ContentHTML = html
+	} else {
+		post.ContentHTML = ""
+	}
+
+	return nil
+}
+
+// setPostPreview sets the preview image for the post
+func (s *Scraper) setPostPreview(post *entity.Post, e *colly.HTMLElement) {
+	if len(post.Images) > 0 {
+		post.Preview = &post.Images[0]
+	} else {
+		post.Preview = extractPreview(e)
+	}
+}
+
+// extractPostDatetime extracts and parses the post datetime
+func (s *Scraper) extractPostDatetime(e *colly.HTMLElement, post *entity.Post, logger *slog.Logger) error {
+	dtText, exists := e.DOM.Find(".tgme_widget_message_date").Find("time").Attr("datetime")
+
+	if !exists {
+		logger.Error("Could not find datetime", "url", post.URL)
+		return fmt.Errorf("datetime not found")
+	}
+
+	dt, err := time.Parse(time.RFC3339, dtText)
+
+	if err != nil {
+		logger.Error("Could not parse post datetime",
+			"url", post.URL,
+			"datetime", dtText,
+			"error", err)
+		return err
+	}
+
+	post.Datetime = dt
+
+	return nil
+}
+
+// handleUnsupportedContent handles posts with unsupported content
+func (s *Scraper) handleUnsupportedContent(post *entity.Post, username string) {
+	if post.ContentHTML == "" {
+		post.Title = "Message content is unsupported"
+		post.ContentHTML = s.generateUnsupportedMessageHTML(username, post.ID, post.URL)
+	}
+}
+
+// generateUnsupportedMessageHTML generates HTML for unsupported messages
+func (s *Scraper) generateUnsupportedMessageHTML(username string, postID int, postURL string) string {
+	postDeepLink := fmt.Sprintf("tg://resolve?domain=%s&post=%d", username, postID)
+	unsupportedMsgHTML := os.Getenv("UNSUPPORTED_MESSAGE_HTML")
+
+	if unsupportedMsgHTML == "" {
+		return fmt.Sprintf(
+			`<p>Message content is unsupported, try opening it in Telegram mobile app or at t.me using the links below.</p><br><br><a href="%s">[Open in Telegram]</a>&nbsp;&bull;&nbsp;<a href="%s">[Open at t.me]</a>`,
+			postDeepLink, postURL,
+		)
+	}
+
+	unsupportedMsgHTML = strings.ReplaceAll(unsupportedMsgHTML, "{postDeepLink}", postDeepLink)
+	unsupportedMsgHTML = strings.ReplaceAll(unsupportedMsgHTML, "{postURL}", postURL)
+
+	return unsupportedMsgHTML
+}
+
+// extractPostIDFromPath extracts the numeric ID from a string in the format "prefix/id".
 func (s *Scraper) extractPostIDFromPath(path string) (int, error) {
 	parts := strings.Split(path, "/")
 

@@ -54,15 +54,55 @@ func extractTitle(element *colly.HTMLElement) string {
 	return formatTitle(text)
 }
 
+// findMessageContainer finds the most appropriate message text container from Telegram HTML.
+// This function handles several complex cases:
+//
+//  1. Messages with replies: When a message quotes/replies to another message, there can be
+//     multiple .tgme_widget_message_text elements. The function prioritizes main content
+//     over reply content by excluding elements inside .tgme_widget_message_reply containers.
+//
+//  2. Nested message elements: Sometimes there are multiple nested .tgme_widget_message_text
+//     elements within each other. In such cases, the deepest one is preferred.
+//
+//  3. Multiple main content elements: If there are multiple non-reply message text elements,
+//     the function prefers the later ones as main content usually comes after replies.
+//
+// The function returns nil if no suitable container is found.
 func findMessageContainer(element *colly.HTMLElement) *goquery.Selection {
-	msgContainer := element.DOM.Find(".tgme_widget_message_text")
+	allMessages := element.DOM.Find(".tgme_widget_message_text")
 
-	if msgContainer.Length() == 0 {
+	if allMessages.Length() == 0 {
 		return nil
 	}
 
+	// Filter out messages that are inside reply containers to prioritize main content
+	var mainIndices []int
+
+	allMessages.Each(func(i int, s *goquery.Selection) {
+		// Check if this message text is inside a reply by looking at parents
+		isInReply := s.Closest(".tgme_widget_message_reply").Length() > 0
+		if !isInReply {
+			mainIndices = append(mainIndices, i)
+		}
+	})
+
+	// Use main messages if found, otherwise use all messages
+	var msgContainer *goquery.Selection
+
+	if len(mainIndices) > 0 {
+		// Use the first non-reply message
+		msgContainer = allMessages.Eq(mainIndices[0])
+
+		// If there are multiple non-reply messages, prefer the later ones (main content usually comes after replies)
+		if len(mainIndices) > 1 {
+			msgContainer = allMessages.Eq(mainIndices[len(mainIndices)-1])
+		}
+	} else {
+		msgContainer = allMessages
+	}
+
 	// Sometimes there are two inner div.tgme_widget_message_text elements
-	// nested in eache other, in which case the most deep one is used.
+	// nested in each other, in which case the most deep one is used.
 	if msgContainer.Length() > 1 {
 		deepest := msgContainer
 

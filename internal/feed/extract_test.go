@@ -67,9 +67,19 @@ func TestExtractTitle(t *testing.T) {
 			expected: "Стартовали общие OTC-торги заблокированными акциями",
 		},
 		{
-			name:     "First lnie title with bold parts is extracted fully",
+			name:     "First line title with bold parts is extracted fully",
 			html:     `<div class="tgme_widget_message_text js-message_text" dir="auto"><b>$10 000</b>, вложенных ~20 лет назад в:<br><br>1. Золото (берём самый известный золотой ETF/ЗПИФ -&gt; GLD - SPDR Gold Shares) с 2004 по 2025 превратились в ~ <b>$69 000. <br></b>2. Американские государственные облигации (берём самый известный фонд облигаций -&gt; iShares 20+ Year Treasury Bond ETF) с 2004 по 2025 превратились в <b>~$18 700</b>, и это если реинвестировались все купоны, полученные от облигаций.</div>`,
 			expected: "$10 000, вложенных ~20 лет назад в…",
+		},
+		{
+			name:     "Message with blockquote extracts title from first line before blockquote",
+			html:     `<div class="tgme_widget_message_text js-message_text" dir="auto"><b>Important announcement about recent policy changes regarding security measures,</b> stated the official spokesperson during today's press conference.<br><br><blockquote>We have discussed this matter extensively at multiple levels. The implementation requires careful consideration of all stakeholders involved and their respective positions in the current framework.</blockquote><br><br>Follow our channel for updates</div>`,
+			expected: "Important announcement about recent policy changes regarding security measures…",
+		},
+		{
+			name:     "Message with reply extracts title from main content not reply",
+			html:     `<div class="tgme_widget_message_bubble"><a class="tgme_widget_message_reply"><div class="tgme_widget_message_text js-message_reply_text" dir="auto">Previous statement confirmed no deployment changes during current administration.</div></a><div class="media_supported_cont"><div class="tgme_widget_message_text js-message_text" dir="auto">Regional analysis suggests potential coordination difficulties between partner nations regarding security arrangements, according to recent reports.</div></div></div>`,
+			expected: "Regional analysis suggests potential coordination difficulties between partner…",
 		},
 	}
 
@@ -91,6 +101,48 @@ func TestExtractTitle(t *testing.T) {
 
 			// Assert the result
 			assert.Equal(t, tt.expected, title)
+		})
+	}
+}
+
+func TestExtractContentHTML(t *testing.T) {
+	tests := []struct {
+		name     string
+		html     string
+		expected string
+	}{
+		{
+			name:     "Simple blockquote preserves structure",
+			html:     `<div class="tgme_widget_message_text js-message_text" dir="auto">Обычный текст<br><blockquote>Цитата внутри сообщения</blockquote><br>Текст после цитаты</div>`,
+			expected: `Обычный текст<br/><blockquote>Цитата внутри сообщения</blockquote><br/>Текст после цитаты`,
+		},
+		{
+			name:     "Message with reply should extract main content not reply content",
+			html:     `<div class="tgme_widget_message_bubble"><a class="tgme_widget_message_reply"><div class="tgme_widget_message_text js-message_reply_text" dir="auto">Previous statement confirmed no changes to current deployment policies during this administration. Several allied nations expressed interest in coordination efforts. Follow our updates</div></a><div class="media_supported_cont"><div class="tgme_widget_message_text js-message_text" dir="auto">Regional analysis suggests potential coordination difficulties between partner nations regarding security arrangements, according to recent reports.<br/><br/><blockquote>"Considering the current political climate and various constraints, implementation of such plans faces significant challenges. Economic factors also play a crucial role in decision-making," sources indicate.</blockquote><br/><br/>Earlier reports mentioned approximately ten countries expressing readiness to contribute to security guarantee frameworks.</div></div></div>`,
+			expected: `Regional analysis suggests potential coordination difficulties between partner nations regarding security arrangements, according to recent reports.<br/><br/><blockquote>&#34;Considering the current political climate and various constraints, implementation of such plans faces significant challenges. Economic factors also play a crucial role in decision-making,&#34; sources indicate.</blockquote><br/><br/>Earlier reports mentioned approximately ten countries expressing readiness to contribute to security guarantee frameworks.`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock colly HTMLElement with our test HTML
+			doc, err := goquery.NewDocumentFromReader(strings.NewReader(tt.html))
+			require.NoError(t, err)
+
+			selection := doc.Selection
+
+			// Create a colly.HTMLElement with the minimal required fields
+			element := &colly.HTMLElement{
+				DOM: selection,
+			}
+
+			// Extract HTML content using findMessageContainer function
+			msgContainer := findMessageContainer(element)
+			contentHTML, err := msgContainer.Html()
+			require.NoError(t, err)
+
+			// Assert the result
+			assert.Equal(t, tt.expected, contentHTML)
 		})
 	}
 }

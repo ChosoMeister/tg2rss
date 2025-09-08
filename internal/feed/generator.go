@@ -41,7 +41,7 @@ func (g *Generator) Generate(channel *entity.Channel, params *entity.FeedParams)
 			}
 		}
 
-		item.Content = g.appendGallery(item.Content, p.Images)
+		item.Content = g.appendGallery(item.Content, p.Images, p.ImageOnly)
 
 		feed.Add(item)
 
@@ -69,8 +69,13 @@ func (g *Generator) Generate(channel *entity.Channel, params *entity.FeedParams)
 	return []byte(content), nil
 }
 
-func (g *Generator) appendGallery(content string, images []entity.Image) string {
+func (g *Generator) appendGallery(content string, images []entity.Image, isImageOnly bool) string {
 	if len(images) == 0 {
+		return content
+	}
+
+	// Skip gallery for image-only posts with single image to avoid duplication with enclosure
+	if isImageOnly && len(images) == 1 {
 		return content
 	}
 

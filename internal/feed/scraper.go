@@ -177,6 +177,7 @@ func (s *Scraper) handleUnsupportedContent(post *entity.Post, username string) {
 		post.ContentHTML = s.generateUnsupportedMessageHTML(username, post.ID, post.URL)
 	} else if post.ContentHTML == "" && len(post.Images) > 0 {
 		// Image-only message - set title from environment variable, leave ContentHTML empty
+		post.ImageOnly = true
 		if post.Title == "" {
 			post.Title = s.generateImagePostTitle()
 		}

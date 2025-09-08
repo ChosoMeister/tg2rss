@@ -172,10 +172,25 @@ func (s *Scraper) extractPostDatetime(e *colly.HTMLElement, post *entity.Post, l
 
 // handleUnsupportedContent handles posts with unsupported content
 func (s *Scraper) handleUnsupportedContent(post *entity.Post, username string) {
-	if post.ContentHTML == "" {
+	if post.ContentHTML == "" && len(post.Images) == 0 {
 		post.Title = "Message content is unsupported"
 		post.ContentHTML = s.generateUnsupportedMessageHTML(username, post.ID, post.URL)
+	} else if post.ContentHTML == "" && len(post.Images) > 0 {
+		// Image-only message - set title from environment variable, leave ContentHTML empty
+		post.ImageOnly = true
+		if post.Title == "" {
+			post.Title = s.generateImagePostTitle()
+		}
 	}
+}
+
+// generateImagePostTitle returns the title for image-only posts
+func (s *Scraper) generateImagePostTitle() string {
+	imagePostTitle := os.Getenv("IMAGE_POST_TITLE_TEXT")
+	if imagePostTitle == "" {
+		imagePostTitle = "[🖼️ Image]"
+	}
+	return imagePostTitle
 }
 
 // generateUnsupportedMessageHTML generates HTML for unsupported messages

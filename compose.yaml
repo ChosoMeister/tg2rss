@@ -10,6 +10,8 @@ services:
       # could not obtain the post content from t.me.
       # Use {postDeepLink} and {postURL} as placeholders for post links.
       # - UNSUPPORTED_MESSAGE_HTML=
+      # You can specify a custom title for image-only posts (default: "[🖼️ Image]")
+      # - IMAGE_POST_TITLE_TEXT=
       # If you expirience problems with t.me access,
       # try to change the UA and/or use an HTTP proxy
       # - USER_AGENT=

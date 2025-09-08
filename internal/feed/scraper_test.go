@@ -107,6 +107,15 @@ func TestScraper_Scrape(t *testing.T) {
 				assert.Contains(t, content, "400M")
 			},
 		},
+		{
+			name:          "Post 7 - Image-only post",
+			postIdx:       6,
+			expectedID:    8,
+			expectedTitle: "🖼️ [Image]",
+			contentCheck: func(t *testing.T, content string) {
+				assert.Equal(t, "", content)
+			},
+		},
 	}
 
 	for _, tc := range testCases {

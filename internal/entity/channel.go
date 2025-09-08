@@ -16,6 +16,8 @@ type Post struct {
 	URL         string
 	Title       string
 	ContentHTML string
+	// True if this post contains only image(s) without text content
+	ImageOnly bool
 	// A preview image that goes to enclosure
 	Preview *Image
 	// Collection of all images in the post

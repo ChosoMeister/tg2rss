@@ -44,6 +44,13 @@ http://localhost:8080/telegram/channel/durov?format=atom&exclude=crypto|bitcoin
 http://localhost:8080/telegram/channel/durov?cache_ttl=0
 ```
 
+## Environment Variables
+
+- `UNSUPPORTED_MESSAGE_HTML` - Custom HTML message for unsupported post content. Use `{postDeepLink}` and `{postURL}` as placeholders for post links.
+- `IMAGE_POST_TITLE_TEXT` - Custom title for image-only posts (default: "[🖼️ Image]")
+- `USER_AGENT` - Custom User-Agent header for requests to t.me
+- `HTTPS_PROXY` - HTTP proxy for accessing t.me if needed
+
 ## Example RSS Reader Configuration
 
 When adding a feed to your RSS reader, use the URL:

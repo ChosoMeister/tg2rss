@@ -39,11 +39,6 @@ func (s *Scraper) Scrape(ctx context.Context, username string) (*entity.Channel,
 
 	c := s.createCollector(ctx)
 
-	// Style attribute contains potentially dangerous content
-	c.OnHTML("[style]", func(e *colly.HTMLElement) {
-		e.DOM.RemoveAttr("style")
-	})
-
 	// Replace <tg-emoji> elements with just an emoji, e.g.:
 	// <tg-emoji emoji-id="5217457156567096786"><i class="emoji"><b>1️⃣</b></i></tg-emoji> => 1️⃣
 	c.OnHTML("tg-emoji", func(e *colly.HTMLElement) {

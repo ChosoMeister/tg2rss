@@ -22,6 +22,10 @@ type Generator interface {
 	Generate(channel *entity.Channel, params *entity.FeedParams) ([]byte, error)
 }
 
+type IPFilter interface {
+	IsAllowed(r *http.Request) bool
+}
+
 // telegramHandler handles routes for Telegram feeds
 type telegramHandler struct {
 	cache     cache.Cache

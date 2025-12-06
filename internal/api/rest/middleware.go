@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -65,4 +66,36 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 // Unwrap returns the original ResponseWriter
 func (lrw *loggingResponseWriter) Unwrap() http.ResponseWriter {
 	return lrw.ResponseWriter
+}
+
+// IPFilterMiddleware wraps an http.Handler with IP-based access control
+func IPFilterMiddleware(filter IPFilter) func(http.Handler) http.Handler {
+	logger := app.Logger()
+
+	return func(next http.Handler) http.Handler {
+		if filter == nil {
+			return next
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if filter.IsAllowed(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			logger.Warn("IP not allowed",
+				"remote_addr", r.RemoteAddr,
+				"path", r.URL.Path,
+			)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+
+			response := map[string]string{"error": "access denied"}
+
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				logger.Error("Failed to encode error response", "error", err)
+			}
+		})
+	}
 }

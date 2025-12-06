@@ -48,6 +48,24 @@ func main() {
 		redisHost = "redis"
 	}
 
+	// Configure IP filtering
+	allowedIPsStr := os.Getenv("ALLOWED_IPS")
+	trustProxy := os.Getenv("REVERSE_PROXY") == "true" || os.Getenv("REVERSE_PROXY") == "1"
+
+	var ipFilter rest.IPFilter
+
+	if allowedIPsStr != "" {
+		firewall, err := rest.NewFirewall(allowedIPsStr, trustProxy)
+
+		if err != nil {
+			logger.Error("Failed to create firewall", "error", err)
+			os.Exit(1)
+		}
+
+		ipFilter = firewall
+		logger.Info("IP filtering enabled", "allowed_ips", allowedIPsStr, "trust_proxy", trustProxy)
+	}
+
 	// Initialize Redis cache
 	redisClient, err := cache.NewRedisClient(ctx, fmt.Sprintf("%s:6379", redisHost))
 
@@ -62,7 +80,7 @@ func main() {
 	generator := feed.NewGenerator()
 
 	// Initialize and run the HTTP server
-	server := rest.NewServer(redisClient, scraper, generator, port)
+	server := rest.NewServer(redisClient, scraper, generator, ipFilter, port)
 
 	if err := server.Run(ctx); err != nil {
 		logger.Error("Server error", "error", err)

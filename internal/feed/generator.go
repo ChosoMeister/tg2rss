@@ -11,6 +11,11 @@ import (
 
 type Generator struct{}
 
+// NewGenerator creates a new Generator
+func NewGenerator() *Generator {
+	return &Generator{}
+}
+
 // Generate creates a feed from a channel and returns it as a byte array
 func (g *Generator) Generate(channel *entity.Channel, params *entity.FeedParams) ([]byte, error) {
 	feed := &feeds.Feed{
@@ -25,23 +30,7 @@ func (g *Generator) Generate(channel *entity.Channel, params *entity.FeedParams)
 			continue
 		}
 
-		item := &feeds.Item{
-			Id:      strconv.Itoa(p.ID),
-			Title:   p.Title,
-			Content: p.ContentHTML,
-			Link:    &feeds.Link{Href: p.URL},
-			Created: p.Datetime,
-		}
-
-		if p.Preview != nil {
-			item.Enclosure = &feeds.Enclosure{
-				Url:    p.Preview.URL,
-				Type:   p.Preview.Type,
-				Length: strconv.Itoa(int(p.Preview.Size)),
-			}
-		}
-
-		item.Content = g.appendGallery(item.Content, p.Images, p.ImageOnly)
+		item := g.generatePost(&p, channel, params)
 
 		feed.Add(item)
 
@@ -67,6 +56,33 @@ func (g *Generator) Generate(channel *entity.Channel, params *entity.FeedParams)
 	}
 
 	return []byte(content), nil
+}
+
+func (g *Generator) generatePost(p *entity.Post, channel *entity.Channel, params *entity.FeedParams) *feeds.Item {
+	item := &feeds.Item{
+		Id:      p.URL,
+		Title:   p.Title,
+		Content: p.ContentHTML,
+		Link:    &feeds.Link{Href: p.URL},
+		Created: p.Datetime,
+	}
+
+	// Atom won't validate without <author>
+	if params.Format == entity.FormatAtom {
+		item.Author = &feeds.Author{Name: channel.Username}
+	}
+
+	if p.Preview != nil {
+		item.Enclosure = &feeds.Enclosure{
+			Url:    p.Preview.URL,
+			Type:   p.Preview.Type,
+			Length: strconv.Itoa(int(p.Preview.Size)),
+		}
+	}
+
+	item.Content = g.appendGallery(item.Content, p.Images, p.ImageOnly)
+
+	return item
 }
 
 func (g *Generator) appendGallery(content string, images []entity.Image, isImageOnly bool) string {

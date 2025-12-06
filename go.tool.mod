@@ -1,4 +1,4 @@
-module gitlab.pharmhub.ru/pharmhub/pharmcode/apps/w-privileges/tools
+module github.com/nDmitry/tgfeed/tools
 
 go 1.25
 

@@ -7,13 +7,23 @@ import (
 	"strings"
 )
 
-// Firewall implements IP-based access control
+// Firewall implements IP-based access control for HTTP requests.
+// It maintains a list of allowed IP addresses and CIDR ranges, and can
+// optionally trust reverse proxy headers (X-Real-IP, X-Forwarded-For) to
+// determine the client's real IP address.
 type Firewall struct {
 	allowedNets []*net.IPNet
 	trustProxy  bool
 }
 
-// NewFirewall creates a new Firewall instance
+// NewFirewall creates a new Firewall instance with the specified configuration.
+// The allowedIPsStr parameter accepts a comma-separated list of IP addresses
+// and/or CIDR ranges (e.g., "10.0.0.0/24,192.168.1.1,2001:db8::/32").
+// If allowedIPsStr is empty, all IP addresses are allowed by default.
+// When trustProxy is true, the firewall will check X-Real-IP and X-Forwarded-For
+// headers to determine the client's IP address, which is necessary when the
+// application runs behind a reverse proxy.
+// Returns an error if any IP address or CIDR notation is invalid.
 func NewFirewall(allowedIPsStr string, trustProxy bool) (*Firewall, error) {
 	if allowedIPsStr == "" {
 		return &Firewall{
@@ -34,7 +44,10 @@ func NewFirewall(allowedIPsStr string, trustProxy bool) (*Firewall, error) {
 	}, nil
 }
 
-// IsAllowed checks if the request is from an allowed IP address
+// IsAllowed checks if the request originates from an allowed IP address.
+// When trustProxy is enabled, it first checks X-Real-IP and X-Forwarded-For headers
+// before falling back to RemoteAddr. If no IP restrictions are configured (empty allowlist),
+// all requests are allowed. Returns false if the IP cannot be extracted or is not in the allowlist.
 func (f *Firewall) IsAllowed(r *http.Request) bool {
 	if len(f.allowedNets) == 0 {
 		return true

@@ -68,7 +68,11 @@ func (lrw *loggingResponseWriter) Unwrap() http.ResponseWriter {
 	return lrw.ResponseWriter
 }
 
-// IPFilterMiddleware wraps an http.Handler with IP-based access control
+// IPFilterMiddleware wraps an http.Handler with IP-based access control.
+// If the filter is nil, the middleware passes all requests through unchanged.
+// When a filter is provided, each request is validated using filter.IsAllowed.
+// Denied requests receive a 403 Forbidden response with a JSON error message.
+// The middleware logs warnings for denied requests including the remote address and path.
 func IPFilterMiddleware(filter IPFilter) func(http.Handler) http.Handler {
 	logger := app.Logger()
 

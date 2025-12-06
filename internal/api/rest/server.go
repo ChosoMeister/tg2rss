@@ -24,7 +24,10 @@ type Server struct {
 	port      string
 }
 
-// NewServer creates a new REST API server
+// NewServer creates a new REST API server with the specified dependencies.
+// The ipFilter parameter controls IP-based access restrictions; pass nil to disable filtering.
+// The port parameter specifies the TCP port to listen on (e.g., "8080").
+// The server is pre-configured with secure timeout values to mitigate common attacks.
 func NewServer(c cache.Cache, s Scraper, g Generator, ipFilter IPFilter, port string) *Server {
 	mux := http.NewServeMux()
 	logger := app.Logger()

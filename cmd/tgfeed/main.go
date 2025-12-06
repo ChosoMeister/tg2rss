@@ -59,7 +59,7 @@ func main() {
 	defer redisClient.Close()
 
 	scraper := feed.NewDefaultScraper()
-	generator := &feed.Generator{}
+	generator := feed.NewGenerator()
 
 	// Initialize and run the HTTP server
 	server := rest.NewServer(redisClient, scraper, generator, port)

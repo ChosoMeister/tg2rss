@@ -16,6 +16,11 @@ services:
       # try to change the UA and/or use an HTTP proxy
       # - USER_AGENT=
       # - HTTPS_PROXY=
+      # Restrict access to specific IPs (e.g., feed readers)
+      # - ALLOWED_IPS=10.0.0.0/24,192.168.1.1
+      # Enable if running behind a reverse proxy (nginx, Caddy, etc.)
+      # and using ALLOWED_IPS
+      # - REVERSE_PROXY=true
     ports:
       - 8080:8080
     depends_on:

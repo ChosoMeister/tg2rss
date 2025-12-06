@@ -14,12 +14,19 @@ import (
 	"github.com/nDmitry/tgfeed/internal/entity"
 )
 
+// Scraper defines the interface for scraping Telegram channel data.
 type Scraper interface {
 	Scrape(ctx context.Context, username string) (*entity.Channel, error)
 }
 
+// Generator defines the interface for generating RSS/Atom feeds from channel data.
 type Generator interface {
 	Generate(channel *entity.Channel, params *entity.FeedParams) ([]byte, error)
+}
+
+// IPFilter defines the interface for IP-based access control.
+type IPFilter interface {
+	IsAllowed(r *http.Request) bool
 }
 
 // telegramHandler handles routes for Telegram feeds

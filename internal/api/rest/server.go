@@ -20,11 +20,15 @@ type Server struct {
 	cache     cache.Cache
 	scraper   Scraper
 	generator Generator
+	ipFilter  IPFilter
 	port      string
 }
 
-// NewServer creates a new REST API server
-func NewServer(c cache.Cache, s Scraper, g Generator, port string) *Server {
+// NewServer creates a new REST API server with the specified dependencies.
+// The ipFilter parameter controls IP-based access restrictions; pass nil to disable filtering.
+// The port parameter specifies the TCP port to listen on (e.g., "8080").
+// The server is pre-configured with secure timeout values to mitigate common attacks.
+func NewServer(c cache.Cache, s Scraper, g Generator, ipFilter IPFilter, port string) *Server {
 	mux := http.NewServeMux()
 	logger := app.Logger()
 
@@ -34,6 +38,7 @@ func NewServer(c cache.Cache, s Scraper, g Generator, port string) *Server {
 		cache:     c,
 		scraper:   s,
 		generator: g,
+		ipFilter:  ipFilter,
 		port:      port,
 		server: &http.Server{
 			Addr:              ":" + port,
@@ -58,11 +63,13 @@ func (s *Server) registerHandlers() {
 
 // Run starts the server and blocks until the context is canceled
 func (s *Server) Run(ctx context.Context) error {
-	// Apply middleware to the router
-	handlerWithMiddleware := Logger(s.mux)
+	// Apply middleware chain
+	handler := http.Handler(s.mux)
+	handler = IPFilterMiddleware(s.ipFilter)(handler)
+	handler = Logger(handler)
 
 	// Set the handler with middleware
-	s.server.Handler = handlerWithMiddleware
+	s.server.Handler = handler
 
 	// Set BaseContext to pass the parent context
 	s.server.BaseContext = func(_ net.Listener) context.Context { return ctx }

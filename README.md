@@ -50,6 +50,8 @@ http://localhost:8080/telegram/channel/durov?cache_ttl=0
 - `IMAGE_POST_TITLE_TEXT` - Custom title for image-only posts (default: "[🖼️ Image]")
 - `USER_AGENT` - Custom User-Agent header for requests to t.me
 - `HTTPS_PROXY` - HTTP proxy for accessing t.me if needed
+- `ALLOWED_IPS` - Comma-separated list of allowed IP addresses or CIDR ranges (e.g., "10.0.0.0/24,192.168.1.1"). If not set, all IPs are allowed.
+- `REVERSE_PROXY` - Set to "true" or "1" to trust X-Real-IP and X-Forwarded-For headers for IP extraction. Only enable this if ALLOWED_IPS are configured and tgfeed is behind a reverse proxy. (default: false)
 
 ## Example RSS Reader Configuration
 

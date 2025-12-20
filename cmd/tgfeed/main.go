@@ -74,9 +74,10 @@ func main() {
 			os.Exit(1)
 		}
 
-		defer redisClient.Close()
 		c = redisClient
 	}
+
+	defer c.Close()
 
 	scraper := feed.NewDefaultScraper()
 	generator := feed.NewGenerator()

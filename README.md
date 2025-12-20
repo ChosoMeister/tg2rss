@@ -8,7 +8,7 @@ Running using Docker:
 $ docker compose up -d
 ```
 
-This will start the tgfeed server on port 8080 (can be changed via HTTP_SERVER_PORT environment variable) and a Redis instance for caching.
+This will start the tgfeed server on port 8080 (can be changed via HTTP_SERVER_PORT environment variable).
 
 ## API Endpoints
 
@@ -65,4 +65,4 @@ Replace `channelname` with the username of the Telegram channel you want to foll
 
 ## Docker Compose
 
-The service is preconfigured with Redis for caching. You can customize the configuration through environment variables in the `compose.yaml` file.
+The service can be run using Docker Compose. Customize the configuration through environment variables in the `compose.yaml` file. You can uncomment some config values there if you want to keep cache in Redis. Otherwise it will be kept in RAM (by default).

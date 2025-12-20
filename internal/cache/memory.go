@@ -35,7 +35,7 @@ func (c *MemoryCache) Get(_ context.Context, key string) ([]byte, error) {
 
 // Set stores a value in memory with the specified TTL
 // If ttl is 0, the value will not be cached
-func (c *MemoryCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+func (c *MemoryCache) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
 	if ttl == 0 {
 		return nil // Skip caching if TTL is 0
 	}
@@ -45,17 +45,10 @@ func (c *MemoryCache) Set(ctx context.Context, key string, value []byte, ttl tim
 	c.mu.Unlock()
 
 	go func() {
-		timer := time.NewTimer(ttl)
-		defer timer.Stop()
-
-		select {
-		case <-timer.C:
-			c.mu.Lock()
-			delete(c.cache, key)
-			c.mu.Unlock()
-		case <-ctx.Done():
-			return
-		}
+		time.Sleep(ttl)
+		c.mu.Lock()
+		delete(c.cache, key)
+		c.mu.Unlock()
 	}()
 
 	return nil

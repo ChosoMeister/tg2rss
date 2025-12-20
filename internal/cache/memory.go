@@ -63,7 +63,9 @@ func (c *MemoryCache) Set(ctx context.Context, key string, value []byte, ttl tim
 
 // Close releases the memory
 func (c *MemoryCache) Close() error {
+	c.mu.Lock()
 	clear(c.cache)
+	c.mu.Unlock()
 
 	return nil
 }

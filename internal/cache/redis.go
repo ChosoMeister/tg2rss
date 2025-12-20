@@ -2,14 +2,10 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
-
-// ErrCacheMiss is returned when a key is not found in the cache
-var ErrCacheMiss = errors.New("cache miss")
 
 // RedisCache implements the Cache interface using Redis
 type RedisCache struct {

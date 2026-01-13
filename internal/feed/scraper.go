@@ -18,14 +18,41 @@ const tmpPath = "/tmp"
 const tgProtocolDefault = "https"
 const tgDomainDefault = "t.me"
 const userAgentDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+const tgConcurrentRequests = 3
+
+type semaphore struct {
+	c chan struct{}
+}
+
+func newSemaphore(n int) *semaphore {
+	return &semaphore{c: make(chan struct{}, n)}
+}
+
+func (s *semaphore) acquire(ctx context.Context) error {
+	select {
+	case s.c <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *semaphore) release() {
+	<-s.c
+}
 
 type Scraper struct {
 	protocol string
 	host     string
+	sema     *semaphore
 }
 
 func NewDefaultScraper() *Scraper {
-	return &Scraper{protocol: tgProtocolDefault, host: tgDomainDefault}
+	return &Scraper{
+		protocol: tgProtocolDefault,
+		host:     tgDomainDefault,
+		sema:     newSemaphore(tgConcurrentRequests),
+	}
 }
 
 // Scrape fetches channel data from Telegram
@@ -69,6 +96,12 @@ func (s *Scraper) Scrape(ctx context.Context, username string) (*entity.Channel,
 			"status", r.StatusCode,
 			"error", err)
 	})
+
+	if err := s.sema.acquire(ctx); err != nil {
+		return nil, fmt.Errorf("could not acquire semaphore: %w", err)
+	}
+
+	defer s.sema.release()
 
 	if err := c.Visit(channel.URL); err != nil {
 		return nil, fmt.Errorf("could not visit %s: %w", channel.URL, err)

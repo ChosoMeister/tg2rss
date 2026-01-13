@@ -7,30 +7,58 @@ import (
 	"time"
 )
 
+type cacheItem struct {
+	value     []byte
+	expiresAt time.Time
+}
+
 // MemoryCache implements the Cache interface using RAM
 type MemoryCache struct {
-	cache map[string][]byte
+	cache map[string]cacheItem
 	mu    sync.RWMutex
+	stop  chan struct{}
 }
 
 // NewMemoryClient creates a new cache client
 func NewMemoryClient() *MemoryCache {
-	cache := make(map[string][]byte, 100)
+	mc := &MemoryCache{
+		cache: make(map[string]cacheItem, 100),
+		stop:  make(chan struct{}),
+	}
 
-	return &MemoryCache{cache: cache}
+	go func() {
+		for {
+			select {
+			case <-mc.stop:
+				return
+			case <-time.After(1 * time.Minute):
+				mc.cleanup(time.Now())
+			}
+		}
+	}()
+
+	return mc
 }
 
 // Get retrieves a value from memory
 func (c *MemoryCache) Get(_ context.Context, key string) ([]byte, error) {
 	c.mu.RLock()
-	val, exists := c.cache[key]
+	item, exists := c.cache[key]
 	c.mu.RUnlock()
 
 	if !exists {
 		return nil, ErrCacheMiss
 	}
 
-	return val, nil
+	if item.expiresAt.Before(time.Now()) {
+		c.mu.Lock()
+		delete(c.cache, key)
+		c.mu.Unlock()
+
+		return nil, ErrCacheMiss
+	}
+
+	return item.value, nil
 }
 
 // Set stores a value in memory with the specified TTL
@@ -41,21 +69,16 @@ func (c *MemoryCache) Set(_ context.Context, key string, value []byte, ttl time.
 	}
 
 	c.mu.Lock()
-	c.cache[key] = value
+	c.cache[key] = cacheItem{value: value, expiresAt: time.Now().Add(ttl)}
 	c.mu.Unlock()
-
-	go func() {
-		time.Sleep(ttl)
-		c.mu.Lock()
-		delete(c.cache, key)
-		c.mu.Unlock()
-	}()
 
 	return nil
 }
 
 // Close releases the memory
 func (c *MemoryCache) Close() error {
+	close(c.stop)
+
 	c.mu.Lock()
 	clear(c.cache)
 	c.mu.Unlock()
@@ -63,12 +86,34 @@ func (c *MemoryCache) Close() error {
 	return nil
 }
 
+func (c *MemoryCache) cleanup(now time.Time) {
+	c.mu.RLock()
+
+	var expiredKeys []string
+
+	for key, item := range c.cache {
+		if item.expiresAt.Before(now) || item.expiresAt.Equal(now) {
+			expiredKeys = append(expiredKeys, key)
+		}
+	}
+
+	c.mu.RUnlock()
+
+	if len(expiredKeys) > 0 {
+		c.mu.Lock()
+		for _, key := range expiredKeys {
+			delete(c.cache, key)
+		}
+		c.mu.Unlock()
+	}
+}
+
 // snapshot returns a copy of the cache for testing purposes
-func (c *MemoryCache) snapshot() map[string][]byte {
+func (c *MemoryCache) snapshot() map[string]cacheItem {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	result := make(map[string][]byte, len(c.cache))
+	result := make(map[string]cacheItem, len(c.cache))
 
 	maps.Copy(result, c.cache)
 

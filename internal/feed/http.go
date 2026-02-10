@@ -21,5 +21,5 @@ var httpTransport = &http.Transport{
 
 var httpClient = &http.Client{
 	Transport: httpTransport,
-	Timeout:   30 * time.Second,
+	Timeout:   120 * time.Second,
 }

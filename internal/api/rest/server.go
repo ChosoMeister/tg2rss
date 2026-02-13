@@ -45,7 +45,7 @@ func NewServer(c cache.Cache, s Scraper, g Generator, ipFilter IPFilter, port st
 			Handler:           nil,               // Will be set in Run
 			ReadHeaderTimeout: 10 * time.Second,  // Mitigate Slowloris
 			ReadTimeout:       30 * time.Second,  // Time to read entire request (including body)
-			WriteTimeout:      30 * time.Second,  // Time to write response
+			WriteTimeout:      300 * time.Second, // Time to process request and write response (includes semaphore wait + scraping)
 			IdleTimeout:       120 * time.Second, // Keep-alive timeout
 		},
 	}

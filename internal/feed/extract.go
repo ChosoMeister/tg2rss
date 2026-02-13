@@ -1,8 +1,6 @@
 package feed
 
 import (
-	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -330,11 +328,12 @@ func extractImageTypeFromURL(url string) string {
 
 func getImageSize(imageURL string) int64 {
 	logger := app.Logger()
+
 	// nolint: gosec
-	res, err := httpClient.Get(imageURL)
+	res, err := httpClient.Head(imageURL)
 
 	if err != nil {
-		logger.Error("Could not download an image",
+		logger.Error("Could not get image size",
 			"imageUrl", imageURL,
 			"error", err)
 
@@ -343,31 +342,9 @@ func getImageSize(imageURL string) int64 {
 
 	defer res.Body.Close()
 
-	tmpFile, err := os.CreateTemp(tmpPath, "enclosure_*")
-
-	if err != nil {
-		logger.Error("Could not create a temp file",
-			"imageUrl", imageURL,
-			"error", err)
-
-		return 0
+	if res.StatusCode >= 200 && res.StatusCode < 300 && res.ContentLength > 0 {
+		return res.ContentLength
 	}
 
-	defer func() {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-	}()
-
-	n, err := io.Copy(tmpFile, res.Body)
-
-	if err != nil {
-		logger.Error("Could not save an image into tmp file",
-			"tmpFilename", tmpFile.Name(),
-			"imageUrl", imageURL,
-			"error", err)
-
-		return 0
-	}
-
-	return n
+	return 0
 }

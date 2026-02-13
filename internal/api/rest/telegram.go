@@ -155,7 +155,7 @@ func (h *telegramHandler) serveContent(w http.ResponseWriter, content []byte, fo
 	w.WriteHeader(http.StatusOK)
 
 	if _, err := w.Write(content); err != nil {
-		handleBadErrorResponse(err, content)
+		h.logger.Error("Failed to write response", "error", err, "content_length", len(content))
 	}
 }
 

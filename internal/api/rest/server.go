@@ -14,32 +14,34 @@ import (
 
 // Server represents the REST API server
 type Server struct {
-	mux       *http.ServeMux
-	server    *http.Server
-	logger    *slog.Logger
-	cache     cache.Cache
-	scraper   Scraper
-	generator Generator
-	ipFilter  IPFilter
-	port      string
+	mux        *http.ServeMux
+	server     *http.Server
+	logger     *slog.Logger
+	cache      cache.Cache
+	scraper    Scraper
+	generator  Generator
+	ipFilter   IPFilter
+	port       string
+	trustProxy bool
 }
 
 // NewServer creates a new REST API server with the specified dependencies.
 // The ipFilter parameter controls IP-based access restrictions; pass nil to disable filtering.
 // The port parameter specifies the TCP port to listen on (e.g., "8080").
 // The server is pre-configured with secure timeout values to mitigate common attacks.
-func NewServer(c cache.Cache, s Scraper, g Generator, ipFilter IPFilter, port string) *Server {
+func NewServer(c cache.Cache, s Scraper, g Generator, ipFilter IPFilter, port string, trustProxy bool) *Server {
 	mux := http.NewServeMux()
 	logger := app.Logger()
 
 	server := &Server{
-		mux:       mux,
-		logger:    logger,
-		cache:     c,
-		scraper:   s,
-		generator: g,
-		ipFilter:  ipFilter,
-		port:      port,
+		mux:        mux,
+		logger:     logger,
+		cache:      c,
+		scraper:    s,
+		generator:  g,
+		ipFilter:   ipFilter,
+		port:       port,
+		trustProxy: trustProxy,
 		server: &http.Server{
 			Addr:              ":" + port,
 			Handler:           nil,               // Will be set in Run
@@ -65,8 +67,8 @@ func (s *Server) registerHandlers() {
 func (s *Server) Run(ctx context.Context) error {
 	// Apply middleware chain
 	handler := http.Handler(s.mux)
-	handler = IPFilterMiddleware(s.ipFilter)(handler)
-	handler = Logger(handler)
+	handler = IPFilterMiddleware(s.ipFilter, s.trustProxy)(handler)
+	handler = Logger(handler, s.trustProxy)
 
 	// Set the handler with middleware
 	s.server.Handler = handler

@@ -83,7 +83,7 @@ func main() {
 	generator := feed.NewGenerator()
 
 	// Initialize and run the HTTP server
-	server := rest.NewServer(c, scraper, generator, ipFilter, port)
+	server := rest.NewServer(c, scraper, generator, ipFilter, port, trustProxy)
 
 	if err := server.Run(ctx); err != nil {
 		logger.Error("Server error", "error", err)

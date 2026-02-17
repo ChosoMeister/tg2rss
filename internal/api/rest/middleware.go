@@ -9,7 +9,7 @@ import (
 )
 
 // Logger wraps an http.Handler with request/response logging
-func Logger(next http.Handler) http.Handler {
+func Logger(next http.Handler, trustProxy bool) http.Handler {
 	logger := app.Logger()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +25,7 @@ func Logger(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
-			"remote_addr", r.RemoteAddr,
+			"remote_addr", mustExtractClientIP(r, trustProxy),
 			"user_agent", r.UserAgent(),
 		)
 
@@ -73,7 +73,7 @@ func (lrw *loggingResponseWriter) Unwrap() http.ResponseWriter {
 // When a filter is provided, each request is validated using filter.IsAllowed.
 // Denied requests receive a 403 Forbidden response with a JSON error message.
 // The middleware logs warnings for denied requests including the remote address and path.
-func IPFilterMiddleware(filter IPFilter) func(http.Handler) http.Handler {
+func IPFilterMiddleware(filter IPFilter, trustProxy bool) func(http.Handler) http.Handler {
 	logger := app.Logger()
 
 	return func(next http.Handler) http.Handler {
@@ -88,7 +88,7 @@ func IPFilterMiddleware(filter IPFilter) func(http.Handler) http.Handler {
 			}
 
 			logger.Warn("IP not allowed",
-				"remote_addr", r.RemoteAddr,
+				"remote_addr", mustExtractClientIP(r, trustProxy),
 				"path", r.URL.Path,
 			)
 

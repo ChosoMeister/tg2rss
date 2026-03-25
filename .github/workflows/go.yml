@@ -26,9 +26,22 @@ jobs:
           cache-dependency-path: "*.sum"
         id: go
 
-      - name: Get dependencies
+      - name: Get dependencies and Tidy
         working-directory: ./
-        run: go get -v -t -d ./...
+        run: |
+          go mod tidy
+          go get -v -t -d ./...
+
+      - name: Auto-commit go.sum if changed
+        working-directory: ./
+        run: |
+          if [[ -n $(git status --porcelain go.sum go.mod) ]]; then
+            git config --global user.name 'github-actions[bot]'
+            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+            git add go.sum go.mod
+            git commit -m "chore: sync go.sum via CI"
+            git push
+          fi
 
       - name: Lint
         working-directory: ./

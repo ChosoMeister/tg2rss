@@ -2,7 +2,6 @@ package rest
 
 import (
 	"compress/gzip"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -130,5 +129,3 @@ func (w *gzipResponseWriter) Flush() {
 	}
 }
 
-// interface compliance check
-var _ io.Closer = (*gzipResponseWriter)(nil)

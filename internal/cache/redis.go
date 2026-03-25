@@ -84,4 +84,3 @@ func (c *RedisCache) Set(ctx context.Context, key string, value []byte, ttl time
 func (c *RedisCache) Close() error {
 	return c.client.Close()
 }
-

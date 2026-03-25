@@ -21,7 +21,6 @@ func SetDefaultCacheTTL(minutes int) {
 	cacheTTLDefault = minutes
 }
 
-
 // FeedParams represents validated request parameters for feed generation
 type FeedParams struct {
 	// Username is the Telegram channel username

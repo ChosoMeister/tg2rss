@@ -134,4 +134,3 @@ func (c *MemoryCache) snapshot() map[string]cacheItem {
 
 	return result
 }
-

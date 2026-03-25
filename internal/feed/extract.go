@@ -8,10 +8,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/PuerkitoBio/goquery"
-	"github.com/gocolly/colly/v2"
 	"github.com/ChosoMeister/tg2rss/internal/app"
 	"github.com/ChosoMeister/tg2rss/internal/entity"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/gocolly/colly/v2"
 )
 
 const (
@@ -251,7 +251,7 @@ func truncateAtWordBoundary(text string, limit int) string {
 // extractImages gets all images from message grouped layer
 func extractImages(element *colly.HTMLElement) []entity.Image {
 	type imageInfo struct {
-		url  string
+		url   string
 		iType string
 	}
 
@@ -294,7 +294,6 @@ func extractImages(element *colly.HTMLElement) []entity.Image {
 
 	return images
 }
-
 
 // extractPreview finds an image link preview and extracts it
 func extractPreview(element *colly.HTMLElement) *entity.Image {

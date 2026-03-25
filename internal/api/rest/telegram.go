@@ -2,7 +2,7 @@ package rest
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -57,108 +57,129 @@ func NewTelegramHandler(
 // getChannelFeed handles requests for Telegram channel feeds
 func (h *telegramHandler) getChannelFeed(w http.ResponseWriter, r *http.Request) {
 	params, err := entity.NewFeedParamFromRequest(r)
-
 	if err != nil {
 		h.handleError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	// Try to get from cache first if caching is enabled
+	// Try cache → stale cache → scrape → stale fallback
 	if params.CacheTTL > 0 {
-		cacheKey := h.buildCacheKey(params)
-		cachedContent, cacheErr := h.cache.Get(r.Context(), cacheKey)
-
-		if cacheErr == nil {
-			// Cache hit
-			RecordCacheHit()
-			w.Header().Set("X-CACHE-STATUS", "HIT")
-
-			if h.handleETag(w, r, cachedContent) {
-				return
-			}
-
-			h.serveContent(w, cachedContent, params.Format, params.CacheTTL)
+		if h.tryCache(w, r, params) {
 			return
-		} else if cacheErr != cache.ErrCacheMiss {
-			// Real error, not just cache miss
-			h.logger.Error("Cache error", "error", cacheErr)
 		}
 
-		// Cache miss — try stale-while-revalidate
-		RecordCacheMiss()
-		staleContent, staleErr := h.cache.GetStale(r.Context(), cacheKey)
-
-		if staleErr == nil {
-			// Serve stale content immediately, refresh in background
-			h.logger.Info("Serving stale cache", "channel", params.Username)
-			RecordStaleResponse()
-
-			w.Header().Set("X-CACHE-STATUS", "STALE")
-			w.Header().Set("X-Data-Stale", "true")
-
-			// Trigger background refresh
-			go h.refreshCache(params)
-
-			if h.handleETag(w, r, staleContent) {
-				return
-			}
-
-			h.serveContent(w, staleContent, params.Format, params.CacheTTL)
+		if h.tryStaleCache(w, r, params) {
 			return
 		}
 	}
 
 	// No cache available — scrape the channel
 	content, err := h.scrapeAndGenerate(r.Context(), params)
-
 	if err != nil {
-		// Graceful degradation: try stale cache on scraper failure
-		if params.CacheTTL > 0 {
-			cacheKey := h.buildCacheKey(params)
-			staleContent, staleErr := h.cache.GetStale(r.Context(), cacheKey)
-
-			if staleErr == nil {
-				h.logger.Warn("Scraper failed, serving stale cache",
-					"channel", params.Username, "error", err)
-				RecordStaleResponse()
-
-				w.Header().Set("X-CACHE-STATUS", "STALE")
-				w.Header().Set("X-Data-Stale", "true")
-
-				if h.handleETag(w, r, staleContent) {
-					return
-				}
-
-				h.serveContent(w, staleContent, params.Format, params.CacheTTL)
-				return
-			}
+		if params.CacheTTL > 0 && h.tryStaleFallback(w, r, params, err) {
+			return
 		}
 
 		h.handleError(w, err, http.StatusInternalServerError)
+
 		return
 	}
 
-	// Cache the result if caching is enabled
-	if params.CacheTTL > 0 {
-		cacheKey := h.buildCacheKey(params)
-		cacheTTL := time.Duration(params.CacheTTL) * time.Minute
-
-		// Use background context for caching to avoid cancellation
-		cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := h.cache.Set(cacheCtx, cacheKey, content, cacheTTL); err != nil {
-			h.logger.Error("Failed to cache content", "error", err)
-		}
-	}
+	h.cacheContent(params, content)
 
 	w.Header().Set("X-CACHE-STATUS", "MISS")
+	h.respondWithContent(w, r, content, params)
+}
 
+// tryCache attempts to serve from fresh cache. Returns true if served.
+func (h *telegramHandler) tryCache(w http.ResponseWriter, r *http.Request, params *entity.FeedParams) bool {
+	cacheKey := h.buildCacheKey(params)
+	cachedContent, cacheErr := h.cache.Get(r.Context(), cacheKey)
+
+	if cacheErr != nil {
+		if cacheErr != cache.ErrCacheMiss {
+			h.logger.Error("Cache error", "error", cacheErr)
+		}
+
+		RecordCacheMiss()
+
+		return false
+	}
+
+	RecordCacheHit()
+	w.Header().Set("X-CACHE-STATUS", "HIT")
+	h.respondWithContent(w, r, cachedContent, params)
+
+	return true
+}
+
+// tryStaleCache serves expired cache content and triggers background refresh. Returns true if served.
+func (h *telegramHandler) tryStaleCache(w http.ResponseWriter, r *http.Request, params *entity.FeedParams) bool {
+	cacheKey := h.buildCacheKey(params)
+	staleContent, staleErr := h.cache.GetStale(r.Context(), cacheKey)
+
+	if staleErr != nil {
+		return false
+	}
+
+	h.logger.Info("Serving stale cache", "channel", params.Username)
+	RecordStaleResponse()
+
+	w.Header().Set("X-CACHE-STATUS", "STALE")
+	w.Header().Set("X-Data-Stale", "true")
+
+	go h.refreshCache(params)
+
+	h.respondWithContent(w, r, staleContent, params)
+
+	return true
+}
+
+// tryStaleFallback serves stale content when scraping fails. Returns true if served.
+func (h *telegramHandler) tryStaleFallback(w http.ResponseWriter, r *http.Request, params *entity.FeedParams, scrapeErr error) bool {
+	cacheKey := h.buildCacheKey(params)
+	staleContent, staleErr := h.cache.GetStale(r.Context(), cacheKey)
+
+	if staleErr != nil {
+		return false
+	}
+
+	h.logger.Warn("Scraper failed, serving stale cache",
+		"channel", params.Username, "error", scrapeErr)
+	RecordStaleResponse()
+
+	w.Header().Set("X-CACHE-STATUS", "STALE")
+	w.Header().Set("X-Data-Stale", "true")
+
+	h.respondWithContent(w, r, staleContent, params)
+
+	return true
+}
+
+// respondWithContent sends content with ETag check
+func (h *telegramHandler) respondWithContent(w http.ResponseWriter, r *http.Request, content []byte, params *entity.FeedParams) {
 	if h.handleETag(w, r, content) {
 		return
 	}
 
 	h.serveContent(w, content, params.Format, params.CacheTTL)
+}
+
+// cacheContent stores content in cache if caching is enabled
+func (h *telegramHandler) cacheContent(params *entity.FeedParams, content []byte) {
+	if params.CacheTTL <= 0 {
+		return
+	}
+
+	cacheKey := h.buildCacheKey(params)
+	cacheTTL := time.Duration(params.CacheTTL) * time.Minute
+
+	cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := h.cache.Set(cacheCtx, cacheKey, content, cacheTTL); err != nil {
+		h.logger.Error("Failed to cache content", "error", err)
+	}
 }
 
 // scrapeAndGenerate performs the scraping and feed generation with metrics
@@ -213,7 +234,7 @@ func (h *telegramHandler) refreshCache(params *entity.FeedParams) {
 // Returns true if a 304 Not Modified was sent.
 func (h *telegramHandler) handleETag(w http.ResponseWriter, r *http.Request, content []byte) bool {
 	// nolint: gosec
-	etag := fmt.Sprintf(`"%x"`, md5.Sum(content))
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(content))
 	w.Header().Set("ETag", etag)
 
 	if match := r.Header.Get("If-None-Match"); match != "" {
@@ -295,4 +316,3 @@ func handleBadErrorResponse(err error, resp any) {
 		"response", resp,
 	)
 }
-

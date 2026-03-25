@@ -20,128 +20,30 @@ func main() {
 	logger := app.Logger()
 	slog.SetDefault(logger)
 
-	// Create a cancellable context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
+	setupSignalHandler(cancel, logger)
 
-	// Setup signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	port := envOrDefault("HTTP_SERVER_PORT", "8080")
+	trustProxy := envBool("REVERSE_PROXY")
 
-	go func() {
-		<-sigChan
-		logger.Info("Received first shutdown signal, starting graceful shutdown...")
-		cancel()
-
-		// If we receive a second signal, exit immediately
-		<-sigChan
-		logger.Info("Received second shutdown signal, exiting immediately...")
-		os.Exit(1)
-	}()
-
-	port := os.Getenv("HTTP_SERVER_PORT")
-
-	if port == "" {
-		port = "8080"
-	}
-
-	redisHost := os.Getenv("REDIS_HOST")
-
-	// Configure IP filtering
-	allowedIPsStr := os.Getenv("ALLOWED_IPS")
-	trustProxy := os.Getenv("REVERSE_PROXY") == "true" || os.Getenv("REVERSE_PROXY") == "1"
-
-	var ipFilter rest.IPFilter
-
-	if allowedIPsStr != "" {
-		firewall, err := rest.NewFirewall(allowedIPsStr, trustProxy)
-
-		if err != nil {
-			logger.Error("Failed to create firewall", "error", err)
-			os.Exit(1)
-		}
-
-		ipFilter = firewall
-		logger.Info("IP filtering enabled", "allowed_ips", allowedIPsStr, "trust_proxy", trustProxy)
-	}
-
-	var c cache.Cache
-
-	if redisHost == "" {
-		c = cache.NewMemoryClient()
-	} else {
-		redisClient, err := cache.NewRedisClient(ctx, fmt.Sprintf("%s:6379", redisHost))
-
-		if err != nil {
-			logger.Error("Failed to connect to Redis", "error", err)
-			os.Exit(1)
-		}
-
-		c = redisClient
-	}
-
+	ipFilter := setupIPFilter(logger, trustProxy)
+	c := setupCache(ctx, logger)
 	defer c.Close()
 
-	// Parse configurable concurrency
-	maxConcurrent := 0 // use default
-
-	if v := os.Getenv("MAX_CONCURRENT_SCRAPES"); v != "" {
-		parsed, err := strconv.Atoi(v)
-		if err != nil {
-			logger.Error("Invalid MAX_CONCURRENT_SCRAPES", "value", v, "error", err)
-			os.Exit(1)
-		}
-		maxConcurrent = parsed
-	}
-
-	scraper := feed.NewScraper(maxConcurrent)
+	scraper := feed.NewScraper(envInt(logger, "MAX_CONCURRENT_SCRAPES", 0))
 	generator := feed.NewGenerator()
 
-	// Parse configurable default cache TTL
-	if v := os.Getenv("DEFAULT_CACHE_TTL"); v != "" {
-		parsed, err := strconv.Atoi(v)
-		if err != nil {
-			logger.Error("Invalid DEFAULT_CACHE_TTL", "value", v, "error", err)
-			os.Exit(1)
-		}
-		entity.SetDefaultCacheTTL(parsed)
-		logger.Info("Default cache TTL configured", "minutes", parsed)
-	}
-
-	// Parse rate limiting
-	var rateLimit float64
-
-	var rateBurst int
-
-	if v := os.Getenv("RATE_LIMIT"); v != "" {
-		parsed, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			logger.Error("Invalid RATE_LIMIT", "value", v, "error", err)
-			os.Exit(1)
-		}
-		rateLimit = parsed
-	}
-
-	if v := os.Getenv("RATE_BURST"); v != "" {
-		parsed, err := strconv.Atoi(v)
-		if err != nil {
-			logger.Error("Invalid RATE_BURST", "value", v, "error", err)
-			os.Exit(1)
-		}
-		rateBurst = parsed
-	}
-
-	metricsEnabled := os.Getenv("METRICS_ENABLED") == "true" || os.Getenv("METRICS_ENABLED") == "1"
+	setupDefaultCacheTTL(logger)
 
 	config := rest.ServerConfig{
 		Port:           port,
 		BasePath:       os.Getenv("BASE_PATH"),
 		TrustProxy:     trustProxy,
-		MetricsEnabled: metricsEnabled,
-		RateLimit:      rateLimit,
-		RateBurst:      rateBurst,
+		MetricsEnabled: envBool("METRICS_ENABLED"),
+		RateLimit:      envFloat(logger, "RATE_LIMIT", 0),
+		RateBurst:      envInt(logger, "RATE_BURST", 0),
 	}
 
-	// Initialize and run the HTTP server
 	server := rest.NewServer(c, scraper, generator, ipFilter, config)
 
 	if err := server.Run(ctx); err != nil {
@@ -150,3 +52,110 @@ func main() {
 	}
 }
 
+func setupSignalHandler(cancel context.CancelFunc, logger *slog.Logger) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		logger.Info("Received first shutdown signal, starting graceful shutdown...")
+		cancel()
+
+		<-sigChan
+		logger.Info("Received second shutdown signal, exiting immediately...")
+		os.Exit(1)
+	}()
+}
+
+func setupIPFilter(logger *slog.Logger, trustProxy bool) rest.IPFilter {
+	allowedIPsStr := os.Getenv("ALLOWED_IPS")
+	if allowedIPsStr == "" {
+		return nil
+	}
+
+	firewall, err := rest.NewFirewall(allowedIPsStr, trustProxy)
+	if err != nil {
+		logger.Error("Failed to create firewall", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("IP filtering enabled", "allowed_ips", allowedIPsStr, "trust_proxy", trustProxy)
+
+	return firewall
+}
+
+func setupCache(ctx context.Context, logger *slog.Logger) cache.Cache {
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		return cache.NewMemoryClient()
+	}
+
+	redisClient, err := cache.NewRedisClient(ctx, fmt.Sprintf("%s:6379", redisHost))
+	if err != nil {
+		logger.Error("Failed to connect to Redis", "error", err)
+		os.Exit(1)
+	}
+
+	return redisClient
+}
+
+func setupDefaultCacheTTL(logger *slog.Logger) {
+	v := os.Getenv("DEFAULT_CACHE_TTL")
+	if v == "" {
+		return
+	}
+
+	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		logger.Error("Invalid DEFAULT_CACHE_TTL", "value", v, "error", err)
+		os.Exit(1)
+	}
+
+	entity.SetDefaultCacheTTL(parsed)
+	logger.Info("Default cache TTL configured", "minutes", parsed)
+}
+
+// Helper functions for environment variable parsing
+
+func envOrDefault(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+
+	return defaultVal
+}
+
+func envBool(key string) bool {
+	v := os.Getenv(key)
+	return v == "true" || v == "1"
+}
+
+func envInt(logger *slog.Logger, key string, defaultVal int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+
+	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		logger.Error("Invalid "+key, "value", v, "error", err)
+		os.Exit(1)
+	}
+
+	return parsed
+}
+
+func envFloat(logger *slog.Logger, key string, defaultVal float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+
+	parsed, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		logger.Error("Invalid "+key, "value", v, "error", err)
+		os.Exit(1)
+	}
+
+	return parsed
+}

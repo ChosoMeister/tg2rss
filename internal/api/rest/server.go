@@ -27,14 +27,14 @@ type ServerConfig struct {
 
 // Server represents the REST API server
 type Server struct {
-	mux        *http.ServeMux
-	server     *http.Server
-	logger     *slog.Logger
-	cache      cache.Cache
-	scraper    Scraper
-	generator  Generator
-	ipFilter   IPFilter
-	config     ServerConfig
+	mux       *http.ServeMux
+	server    *http.Server
+	logger    *slog.Logger
+	cache     cache.Cache
+	scraper   Scraper
+	generator Generator
+	ipFilter  IPFilter
+	config    ServerConfig
 }
 
 // NewServer creates a new REST API server with the specified dependencies.

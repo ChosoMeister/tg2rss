@@ -128,4 +128,3 @@ func (w *gzipResponseWriter) Flush() {
 		f.Flush()
 	}
 }
-

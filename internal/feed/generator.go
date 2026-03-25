@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gorilla/feeds"
 	"github.com/ChosoMeister/tg2rss/internal/entity"
+	"github.com/gorilla/feeds"
 )
 
 type Generator struct{}

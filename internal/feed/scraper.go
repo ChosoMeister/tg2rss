@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly/v2"
 	"github.com/ChosoMeister/tg2rss/internal/app"
 	"github.com/ChosoMeister/tg2rss/internal/entity"
+	"github.com/gocolly/colly/v2"
 )
 
 const tgProtocolDefault = "https"

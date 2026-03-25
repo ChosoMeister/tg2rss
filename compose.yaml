@@ -1,50 +1,133 @@
 services:
-  tgfeed:
-    container_name: tgfeed
-    image: ghcr.io/ndmitry/tgfeed:latest
+  tg2rss:
+    container_name: tg2rss
+    image: ghcr.io/chosomeister/tg2rss:latest
     environment:
-      - TZ=Europe/Moscow
+      - TZ=Asia/Tehran
       - HTTP_SERVER_PORT=8080
-      # Uncomment the variable if you want to keep cache in Redis
-      # - REDIS_HOST=redis
-      # You can specify a custom HTML message for cases when the scraper
-      # could not obtain the post content from t.me.
-      # Use {postDeepLink} and {postURL} as placeholders for post links.
-      # - UNSUPPORTED_MESSAGE_HTML=
-      # You can specify a custom title for image-only posts (default: "[🖼️ Image]")
-      # - IMAGE_POST_TITLE_TEXT=
-      # If you expirience problems with t.me access,
-      # try to change the UA and/or use an HTTP proxy
-      # - USER_AGENT=
-      # - HTTPS_PROXY=
-      # Restrict access to specific IPs (e.g., feed readers)
-      # - ALLOWED_IPS=10.0.0.0/24,192.168.1.1
-      # Enable if running behind a reverse proxy (nginx, Caddy, etc.)
-      # and using ALLOWED_IPS
+
+      # ─── Cache (Redis) ────────────────────────────────────────────
+      # Feeds are cached in Redis after the first request so subsequent
+      # requests are served instantly without scraping Telegram again.
+      - REDIS_HOST=redis
+
+      # How long a feed stays in cache before being refreshed (in minutes).
+      # Example: 60 = refresh once per hour, 15 = every 15 minutes.
+      # Lower values = fresher feeds but more requests to Telegram.
+      # Higher values = less load on Telegram but feeds update less often.
+      # Note: Even after cache expires, stale data is served instantly while
+      #       a background refresh happens, so users never wait.
+      # - DEFAULT_CACHE_TTL=60
+
+      # ─── Reverse Proxy (nginx / Caddy / Traefik) ──────────────────
+      # If tg2rss is running behind a reverse proxy like nginx, set this
+      # to "true" so the app reads the real client IP from proxy headers
+      # (X-Real-IP, X-Forwarded-For) instead of seeing the proxy's IP.
+      #
+      # When to enable:  You have nginx/Caddy/Traefik in front of tg2rss.
+      # When to skip:    tg2rss is directly exposed to the internet.
+      #
       # - REVERSE_PROXY=true
+
+      # Optional URL prefix for all routes. Useful when tg2rss is served
+      # on a subpath behind a reverse proxy.
+      #
+      # Example: BASE_PATH=/feeds changes the feed URL from:
+      #   http://example.com/telegram/channel/durov
+      # to:
+      #   http://example.com/feeds/telegram/channel/durov
+      #
+      # Leave commented out if tg2rss has its own domain or runs on root path.
+      # - BASE_PATH=/feeds
+
+      # ─── Access Control ───────────────────────────────────────────
+      # Restrict access to specific IP addresses or networks.
+      # Requests from other IPs will get a 403 Forbidden response.
+      #
+      # Format: comma-separated IPs or CIDR ranges.
+      # Example: Only allow your home IP and local network:
+      # - ALLOWED_IPS=203.0.113.50,192.168.1.0/24
+      #
+      # Leave commented out to allow all IPs (no restriction).
+
+      # Per-IP rate limiting to prevent abuse.
+      # RATE_LIMIT = max requests per second per IP address.
+      # RATE_BURST = how many requests can be sent at once (burst tolerance).
+      #
+      # Example: Allow 10 requests/sec with bursts up to 20:
+      # - RATE_LIMIT=10
+      # - RATE_BURST=20
+      #
+      # Leave commented out to disable rate limiting entirely.
+
+      # ─── Monitoring ───────────────────────────────────────────────
+      # Enables a Prometheus-compatible metrics endpoint at /metrics.
+      # Shows stats like: request counts, cache hit rates, scrape durations.
+      # Useful if you have Prometheus + Grafana for monitoring.
+      # If you don't use Prometheus, you can safely leave this disabled.
+      # - METRICS_ENABLED=true
+
+      # ─── Performance Tuning ───────────────────────────────────────
+      # Maximum number of simultaneous requests to Telegram.
+      # Higher = faster when many users request feeds at the same time,
+      #          but may trigger Telegram's anti-scraping protections.
+      # Lower  = safer but slower under high load.
+      # Default: 3 (a safe balance).
+      # - MAX_CONCURRENT_SCRAPES=3
+
+      # ─── Content Customization ────────────────────────────────────
+      # Custom HTML shown when a post can't be read (e.g., videos, polls).
+      # You can use {postDeepLink} for the tg:// link and {postURL} for the
+      # https://t.me link to the original post.
+      #
+      # Example:
+      # - UNSUPPORTED_MESSAGE_HTML=<p>Can't display this post. <a href="{postURL}">View on Telegram</a></p>
+
+      # Title shown for posts that contain only images (no text).
+      # Default: "[🖼️ Image]"
+      # - IMAGE_POST_TITLE_TEXT=[🖼️ Image]
+
+      # ─── Connectivity Issues ──────────────────────────────────────
+      # If Telegram is blocked in your region, route requests through
+      # an HTTP/HTTPS proxy.
+      #
+      # Example using a SOCKS5 proxy:
+      # - HTTPS_PROXY=socks5://proxy-server:1080
+      # Example using an HTTP proxy:
+      # - HTTPS_PROXY=http://proxy-server:8080
+
+      # If Telegram blocks your requests, try changing the User-Agent
+      # string to mimic a different browser.
+      # - USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
+
     ports:
       - 8080:8080
-    # Uncomment depends_on if you want to keep cache in Redis
-    # depends_on:
-    #   - redis
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      - redis
     restart: unless-stopped
-# Uncomment everything below if you want to keep cache in Redis
-# redis:
-#   container_name: redis
-#   image: redis:alpine
-#   environment:
-#     - TZ=Europe/Moscow
-#   ports:
-#     - 6379:6379
-#   volumes:
-#     - redis-data:/data
-#   healthcheck:
-#     test: ["CMD", "redis-cli", "ping"]
-#     interval: 30s
-#     timeout: 10s
-#     retries: 5
-#     start_period: 5s
-#   restart: unless-stopped
 
-# volumes:
-#   redis-data:
+  redis:
+    container_name: redis
+    image: redis:alpine
+    environment:
+      - TZ=Asia/Tehran
+    ports:
+      - 6379:6379
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  redis-data:

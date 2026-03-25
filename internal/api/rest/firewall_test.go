@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nDmitry/tgfeed/internal/api/rest"
+	"github.com/ChosoMeister/tg2rss/internal/api/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -12,7 +12,15 @@ const (
 	FormatRSS  = "rss"
 )
 
-const CacheTTLDefault = 60 // minutes
+// cacheTTLDefault is the default cache TTL in minutes (configurable via SetDefaultCacheTTL)
+var cacheTTLDefault = 60
+
+// SetDefaultCacheTTL sets the default cache TTL in minutes.
+// Called from main.go when DEFAULT_CACHE_TTL env var is set.
+func SetDefaultCacheTTL(minutes int) {
+	cacheTTLDefault = minutes
+}
+
 
 // FeedParams represents validated request parameters for feed generation
 type FeedParams struct {
@@ -82,7 +90,7 @@ func NewFeedParamFromRequest(r *http.Request) (*FeedParams, error) {
 	}
 
 	// Parse cache TTL with default
-	cacheTTL := CacheTTLDefault
+	cacheTTL := cacheTTLDefault
 
 	if ttlStr := qp.Get("cache_ttl"); ttlStr != "" {
 		var err error

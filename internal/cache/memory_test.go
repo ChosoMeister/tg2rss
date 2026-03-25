@@ -179,7 +179,8 @@ func TestMemoryCacheTTL(t *testing.T) {
 				c := tt.prepare()
 				defer c.Close()
 
-				time.Sleep(2 * time.Minute)
+				// Items are only cleaned up after staleBufferDuration (24h) past expiry
+				time.Sleep(staleBufferDuration + 2*time.Minute)
 				synctest.Wait()
 
 				snapshot := c.snapshot()
@@ -189,7 +190,7 @@ func TestMemoryCacheTTL(t *testing.T) {
 		})
 	}
 
-	t.Run("should remove expired entry on Get before cleanup runs", func(t *testing.T) {
+	t.Run("should return ErrCacheMiss on Get for expired entry but keep for stale reads", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			c := NewMemoryClient()
 			defer c.Close()
@@ -198,7 +199,7 @@ func TestMemoryCacheTTL(t *testing.T) {
 			err := c.Set(ctx, "test", []byte{42}, 30*time.Second)
 			require.NoError(t, err)
 
-			// Verify entry exists
+			// Verify entry exists via Get
 			val, err := c.Get(ctx, "test")
 			require.NoError(t, err)
 			assert.Equal(t, []byte{42}, val)
@@ -206,15 +207,19 @@ func TestMemoryCacheTTL(t *testing.T) {
 			// Wait for TTL to expire (but less than cleanup interval)
 			time.Sleep(31 * time.Second)
 
-			// Get should detect expiration and remove entry
+			// Get should detect expiration
 			val, err = c.Get(ctx, "test")
 			assert.Equal(t, ErrCacheMiss, err)
 			assert.Nil(t, val)
 
-			// Verify entry was removed from cache
+			// But GetStale should still return the value
+			val, err = c.GetStale(ctx, "test")
+			require.NoError(t, err)
+			assert.Equal(t, []byte{42}, val)
+
+			// Entry should still be in snapshot (kept for stale reads)
 			snapshot := c.snapshot()
-			assert.Empty(t, snapshot)
-			assert.Equal(t, map[string]cacheItem{}, snapshot)
+			assert.Len(t, snapshot, 1)
 		})
 	})
 }

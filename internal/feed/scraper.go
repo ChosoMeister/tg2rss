@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/gocolly/colly/v2"
-	"github.com/nDmitry/tgfeed/internal/app"
-	"github.com/nDmitry/tgfeed/internal/entity"
+	"github.com/ChosoMeister/tg2rss/internal/app"
+	"github.com/ChosoMeister/tg2rss/internal/entity"
 )
 
 const tgProtocolDefault = "https"
 const tgDomainDefault = "t.me"
 const userAgentDefault = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-const tgConcurrentRequests = 3
+const defaultConcurrentRequests = 3
 
 type semaphore struct {
 	c chan struct{}
@@ -46,12 +46,23 @@ type Scraper struct {
 	sema     *semaphore
 }
 
-func NewDefaultScraper() *Scraper {
+// NewScraper creates a new scraper with configurable max concurrent requests.
+// If maxConcurrent is 0 or negative, the default (3) is used.
+func NewScraper(maxConcurrent int) *Scraper {
+	if maxConcurrent <= 0 {
+		maxConcurrent = defaultConcurrentRequests
+	}
+
 	return &Scraper{
 		protocol: tgProtocolDefault,
 		host:     tgDomainDefault,
-		sema:     newSemaphore(tgConcurrentRequests),
+		sema:     newSemaphore(maxConcurrent),
 	}
+}
+
+// NewDefaultScraper creates a new scraper with default settings.
+func NewDefaultScraper() *Scraper {
+	return NewScraper(defaultConcurrentRequests)
 }
 
 // Scrape fetches channel data from Telegram

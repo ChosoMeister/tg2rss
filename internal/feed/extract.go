@@ -4,13 +4,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly/v2"
-	"github.com/nDmitry/tgfeed/internal/app"
-	"github.com/nDmitry/tgfeed/internal/entity"
+	"github.com/ChosoMeister/tg2rss/internal/app"
+	"github.com/ChosoMeister/tg2rss/internal/entity"
 )
 
 const (
@@ -249,7 +250,12 @@ func truncateAtWordBoundary(text string, limit int) string {
 
 // extractImages gets all images from message grouped layer
 func extractImages(element *colly.HTMLElement) []entity.Image {
-	var images []entity.Image
+	type imageInfo struct {
+		url  string
+		iType string
+	}
+
+	var infos []imageInfo
 
 	element.ForEach(".tgme_widget_message_photo_wrap", func(_ int, el *colly.HTMLElement) {
 		imageURL := extractImageURLFromStyle(el.Attr("style"))
@@ -259,17 +265,36 @@ func extractImages(element *colly.HTMLElement) []entity.Image {
 		}
 
 		imageType := extractImageTypeFromURL(imageURL)
-		imageSize := getImageSize(imageURL)
-
-		images = append(images, entity.Image{
-			URL:  imageURL,
-			Type: imageType,
-			Size: imageSize,
-		})
+		infos = append(infos, imageInfo{url: imageURL, iType: imageType})
 	})
+
+	if len(infos) == 0 {
+		return nil
+	}
+
+	// Fetch all image sizes in parallel
+	images := make([]entity.Image, len(infos))
+	var wg sync.WaitGroup
+
+	for i, info := range infos {
+		images[i] = entity.Image{
+			URL:  info.url,
+			Type: info.iType,
+		}
+
+		wg.Add(1)
+
+		go func(idx int, url string) {
+			defer wg.Done()
+			images[idx].Size = getImageSize(url)
+		}(i, info.url)
+	}
+
+	wg.Wait()
 
 	return images
 }
+
 
 // extractPreview finds an image link preview and extracts it
 func extractPreview(element *colly.HTMLElement) *entity.Image {

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nDmitry/tgfeed/internal/app"
+	"github.com/ChosoMeister/tg2rss/internal/app"
 )
 
 // Logger wraps an http.Handler with request/response logging

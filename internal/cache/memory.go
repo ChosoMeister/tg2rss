@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const staleBufferDuration = 24 * time.Hour
+
 type cacheItem struct {
 	value     []byte
 	expiresAt time.Time
@@ -40,7 +42,7 @@ func NewMemoryClient() *MemoryCache {
 	return mc
 }
 
-// Get retrieves a value from memory
+// Get retrieves a value from memory. Returns ErrCacheMiss if expired or not found.
 func (c *MemoryCache) Get(_ context.Context, key string) ([]byte, error) {
 	c.mu.RLock()
 	item, exists := c.cache[key]
@@ -51,10 +53,20 @@ func (c *MemoryCache) Get(_ context.Context, key string) ([]byte, error) {
 	}
 
 	if item.expiresAt.Before(time.Now()) {
-		c.mu.Lock()
-		delete(c.cache, key)
-		c.mu.Unlock()
+		return nil, ErrCacheMiss
+	}
 
+	return item.value, nil
+}
+
+// GetStale retrieves a value from memory even if it has expired.
+// Returns ErrCacheMiss only if the key was never stored.
+func (c *MemoryCache) GetStale(_ context.Context, key string) ([]byte, error) {
+	c.mu.RLock()
+	item, exists := c.cache[key]
+	c.mu.RUnlock()
+
+	if !exists {
 		return nil, ErrCacheMiss
 	}
 
@@ -86,13 +98,16 @@ func (c *MemoryCache) Close() error {
 	return nil
 }
 
+// cleanup removes items that have been expired for longer than staleBufferDuration.
+// Items within the stale buffer are kept for GetStale to use.
 func (c *MemoryCache) cleanup(now time.Time) {
 	c.mu.RLock()
 
 	var expiredKeys []string
 
 	for key, item := range c.cache {
-		if item.expiresAt.Before(now) || item.expiresAt.Equal(now) {
+		// Only fully remove items that expired more than staleBufferDuration ago
+		if item.expiresAt.Add(staleBufferDuration).Before(now) {
 			expiredKeys = append(expiredKeys, key)
 		}
 	}
@@ -119,3 +134,4 @@ func (c *MemoryCache) snapshot() map[string]cacheItem {
 
 	return result
 }
+

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nDmitry/tgfeed/internal/feed"
+	"github.com/ChosoMeister/tg2rss/internal/feed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

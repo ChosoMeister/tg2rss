@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nDmitry/tgfeed/internal/api/rest"
-	"github.com/nDmitry/tgfeed/internal/cache"
-	"github.com/nDmitry/tgfeed/internal/entity"
+	"github.com/ChosoMeister/tg2rss/internal/api/rest"
+	"github.com/ChosoMeister/tg2rss/internal/cache"
+	"github.com/ChosoMeister/tg2rss/internal/entity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,12 +36,20 @@ func (m *MockGenerator) Generate(channel *entity.Channel, params *entity.FeedPar
 
 // MockCache is a mock implementation of the Cache interface
 type MockCache struct {
-	GetFunc func(ctx context.Context, key string) ([]byte, error)
-	SetFunc func(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	GetFunc      func(ctx context.Context, key string) ([]byte, error)
+	GetStaleFunc func(ctx context.Context, key string) ([]byte, error)
+	SetFunc      func(ctx context.Context, key string, value []byte, ttl time.Duration) error
 }
 
 func (m *MockCache) Get(ctx context.Context, key string) ([]byte, error) {
 	return m.GetFunc(ctx, key)
+}
+
+func (m *MockCache) GetStale(ctx context.Context, key string) ([]byte, error) {
+	if m.GetStaleFunc != nil {
+		return m.GetStaleFunc(ctx, key)
+	}
+	return nil, cache.ErrCacheMiss
 }
 
 func (m *MockCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
@@ -360,7 +368,7 @@ func TestTelegramHandler_GetChannelFeed(t *testing.T) {
 
 			// Create a new test server
 			mux := http.NewServeMux()
-			rest.NewTelegramHandler(mux, mockCache, mockScraper, mockGenerator)
+			rest.NewTelegramHandler(mux, mockCache, mockScraper, mockGenerator, "")
 
 			// Create a test request
 			req := httptest.NewRequest(http.MethodGet, tt.url, nil)

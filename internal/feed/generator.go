@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/feeds"
-	"github.com/nDmitry/tgfeed/internal/entity"
+	"github.com/ChosoMeister/tg2rss/internal/entity"
 )
 
 type Generator struct{}

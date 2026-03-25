@@ -1,4 +1,4 @@
-module github.com/nDmitry/tgfeed/tools
+module github.com/ChosoMeister/tg2rss/tools
 
 go 1.25
 
